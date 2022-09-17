@@ -1,0 +1,569 @@
+---
+title: "DeepfakeAdvisor: First Study"
+date: 2022-09-13
+author: Philipp Winder
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+This notebook is used to analyze the first study of the DeepfakeAdvisor project.
+
+# Data Preparation
+
+## Loading the Libraries
+All required libraries are loaded.
+```{r}
+library(tidyverse)
+library(summarytools)
+library(lsr)
+library(car)
+options(dplyr.width = Inf) # show all columns when printing to console
+theme_set(theme_minimal()) # set ggplot theme for cleaner plotting
+```
+
+## Getting & Cleaning the Data
+Started by loading the raw survey data from the csv files. There was a separate but identical study of black/ African-American and white/ Caucasian participants each.
+```{r}
+setwd('/home/philipp/MEGA/PhD/Projects/DeepFakeAdvisor/analysis/')
+
+white_complete = as_tibble(read.csv('../data/first_study/white/deepfakeAdvisor_white_complete.csv', sep=';', header=T))
+black_complete = as_tibble(read.csv('../data/first_study/black/deepfakeAdvisor_black_complete.csv', sep=';', header=T))
+```
+
+Start the cleaning by removing columns not required for the analysis. These are columns added by Unipark.
+```{r}
+cols_unused = c('lfdn', 'external_lfdn', 'tester', 'dispcode', 'lastpage', 'quality', 's_0001', 'browser', 'referer', 'device_type', 'quota', 'quota_assignment', 'quota_rejected_id', 'page_history', 'hflip', 'vflip', 'output_mode', 'javascript', 'flash', 'session_id', 'language', 'cleaned', 'ats', 'datetime', 'date_of_last_access', 'date_of_first_mail')
+
+white_complete = white_complete %>% select(-all_of(cols_unused)) %>% select(-starts_with('rts'))
+black_complete = black_complete %>% select(-all_of(cols_unused)) %>% select(-starts_with('rts'))
+```
+
+Rename the prolific id column accordingly.
+```{r}
+white_complete = white_complete %>% rename(prolific_id = v_149)
+black_complete = black_complete %>% rename(prolific_id = v_149)
+```
+
+Remove participants who did not watch the stimulus video.
+```{r}
+white_clean = white_complete %>% filter(stimulus_played1 == 1 | stimulus_played2 == 1 | stimulus_played3 == 1 | stimulus_played4 == 1 | stimulus_played5 == 1 | stimulus_played6 == 1 | stimulus_played1 == 0 | stimulus_played2 == 0 | stimulus_played3 == 0 | stimulus_played4 == 0 | stimulus_played5 == 0 | stimulus_played6 == 0)
+
+black_clean = black_complete %>% filter(stimulus_played1 == 1 | stimulus_played2 == 1 | stimulus_played3 == 1 | stimulus_played4 == 1 | stimulus_played5 == 1 | stimulus_played6 == 1 | stimulus_played1 == 0 | stimulus_played2 == 0 | stimulus_played3 == 0 | stimulus_played4 == 0 | stimulus_played5 == 0 | stimulus_played6 == 0)
+```
+
+Remove the stimulus columns from the cleaned data.
+```{r}
+white_clean = white_clean %>% select(-starts_with('stimulus_played'))
+black_clean = black_clean %>% select(-starts_with('stimulus_played'))
+```
+
+Remove records where the participant needed less than 30 seconds to submit the survey.
+```{r}
+white_exclude = white_clean %>% filter(duration < 30)
+white_exclude #according to Prolific this participant timed-out. The data record looks good and complete and the participant will thus be kept.
+
+black_exclude = black_clean %>% filter(duration < 30)
+black_exclude
+```
+
+No further exclusion by using the implemented attention checks was planned, pre-registered or carried out.
+
+## Calculation of Scales
+Calculation of general trust and affective trust.
+```{r}
+white_clean = white_clean %>% mutate(trust=rowMeans(select(., c(trust_general, trust_contact, trust_relationship))))%>% mutate(affective_trust=rowMeans(select(., c(trust_care, trust_understand, trust_warmth))))
+
+black_clean = black_clean %>% mutate(trust=rowMeans(select(., c(trust_general, trust_contact, trust_relationship))))%>% mutate(affective_trust=rowMeans(select(., c(trust_care, trust_understand, trust_warmth))))
+```
+
+Calculation of perceived competence.
+```{r}
+white_clean = white_clean %>% mutate(competence=rowMeans(select(.,c(competence_general, competence_capable, competence_skillful, competence_intelligent))))
+black_clean = black_clean %>% mutate(competence=rowMeans(select(.,c(competence_general, competence_capable, competence_skillful, competence_intelligent))))
+```
+
+Calculation of the advisor benevolence.
+```{r}
+white_clean = white_clean %>% mutate(benevolence=rowMeans(select(., c(bene_values, bene_honest, bene_respect))))
+black_clean = black_clean %>% mutate(benevolence=rowMeans(select(., c(bene_values, bene_honest, bene_respect))))
+```
+
+Calculation of likelihood to invest.
+```{r}
+white_clean = white_clean %>% mutate(likelihood_invest=rowMeans(select(., c(li_implement, li_improvements, li_better))))
+black_clean = black_clean %>% mutate(likelihood_invest=rowMeans(select(., c(li_implement, li_improvements, li_better))))
+```
+
+Calculation of the satisfaction.
+```{r}
+white_clean = white_clean %>% mutate(satisfaction=rowMeans(select(., c(sat_happy, sat_right, sat_satisfied))))
+black_clean = black_clean %>% mutate(satisfaction=rowMeans(select(., c(sat_happy, sat_right, sat_satisfied))))
+```
+
+Calculation of the benevolence attribution toward the firm.
+```{r}
+white_clean = white_clean %>% mutate(benevolence_firm=rowMeans(select(., c(benef_hurt, benef_needs, benef_help, benef_important, benef_welfare))))
+black_clean = black_clean %>% mutate(benevolence_firm=rowMeans(select(., c(benef_hurt, benef_needs, benef_help, benef_important, benef_welfare))))
+```
+
+Calculation of the loyalty towards the firm.
+```{r}
+white_clean = white_clean %>% mutate(loyalty=rowMeans(select(., c(loy_choose, loy_best, loy_loyal))))
+black_clean = black_clean %>% mutate(loyalty=rowMeans(select(., c(loy_choose, loy_best, loy_loyal))))
+```
+
+Calculation of the patience.
+```{r}
+calc_patience = function(df){
+  
+  if(df$patience215 == 1){
+    return(1)
+    
+  }else if(df$patience215 == 2){
+    return(2)
+    
+  }else if(df$patience206 == 1){
+    return(3)
+    
+  }else if(df$patience206 == 2){
+    return(4)
+    
+  }else if(df$patience197 == 1){
+    return(5)
+    
+  }else if(df$patience197 == 2){
+    return(6)
+  }
+  
+  else if(df$patience189 == 1){
+    return(7)
+  }
+  
+  else if(df$patience189 == 2){
+    return(8)
+  }
+  
+  else if(df$patience181 == 1){
+    return(9)
+  }
+  
+  else if(df$patience181 == 2){
+    return(10)
+  }
+  
+  else if(df$patience173 == 1){
+    return(11)
+  }
+  
+  else if(df$patience173 == 2){
+    return(12)
+  }
+  
+  else if(df$patience165 == 1){
+    return(13)
+  }
+  
+  else if(df$patience165 == 2){
+    return(14)
+  }
+  
+  else if(df$patience158 == 1){
+    return(15)
+  }
+  
+  else if(df$patience158 == 2){
+    return(16)
+  }
+  
+  else if(df$patience150 == 1){
+    return(17)
+
+  }
+  
+  else if(df$patience150 == 2){
+    return(18)
+  }
+  
+  else if(df$patience143 == 1){
+    return(19)
+  }
+  
+  else if(df$patience143 == 2){
+    return(20)
+  }
+  
+  else if(df$patience136 == 1){
+    return(21)
+  }
+  
+  else if(df$patience136 == 2){
+    return(22)
+  }
+  
+  else if(df$patience129 == 1){
+    return(23)
+  }
+  
+  else if(df$patience129 == 2){
+    return(24)
+  }
+  
+  else if(df$patience122 == 1){
+    return(25)
+  }
+  
+  else if(df$patience122 == 2){
+    return(26)
+  }
+  
+  else if(df$patience116 == 1){
+    return(27)
+  }
+  
+  else if(df$patience116 == 2){
+    return(28)
+  }
+  
+  else if(df$patience109 == 1){
+    return(29)
+  }
+  
+  else if(df$patience109 == 2){
+    return(30)
+  }
+  
+  else if(df$patience103 == 1){
+    return(31)
+  }
+  
+  else if(df$patience103 == 2){
+    return(32)
+  }
+}
+
+white_clean = white_clean %>% rowwise() %>% mutate(patience=calc_patience(cur_data())) %>% select(-starts_with(c('patience1', 'patience2')))
+black_clean = black_clean %>% rowwise() %>% mutate(patience=calc_patience(cur_data())) %>% select(-starts_with(c('patience1', 'patience2')))
+```
+
+Calculate the financial well-being.
+```{r}
+reverse_points = function(val){
+  if(val == 1){
+    return(7)
+  }else if(val == 2 ){
+    return(6)
+  }else if(val == 3){
+    return(5)
+  }else if(val == 5){
+    return(3)
+  }else if(val == 6){
+    return(2)
+  }else if(val == 7){
+    return(1)
+  }else{
+    return(4)
+  }
+}
+
+#TODO
+#white_clean3 = white_clean %>% mutate(across(c(fwb_situation, fwb_behind), reverse_points)) %>% mutate(fwb_situation=as.integer(fwb_situation)) %>% mutate(fwb_behind=as.integer(fwb_behind)) %>% mutate(fwb=rowMeans(select(., c(fwb_situation, fwb_behind))))
+```
+
+
+
+
+## Splitting of Data
+Splitting the data sets into the corresponding conditions (2*2 design; participant race: black vs white; racial-matching advisor and participant: yes vs no).
+```{r}
+white_matching = white_clean %>% filter(c_0002 == 1 | c_0002 == 2)
+white_no_matching = white_clean %>% filter(c_0002 == 3 | c_0002 == 4)
+
+black_matching = black_clean %>% filter(c_0002 == 1 | c_0002 == 2)
+black_no_matching = black_clean %>% filter(c_0002 == 3 | c_0002 == 4)
+```
+
+# Data Analysis
+
+## Exploratory Analysis
+Get an overview of the collected data.
+```{r}
+white_matching %>% dfSummary %>% summarytools::view()
+white_no_matching %>% dfSummary %>% summarytools::view()
+
+black_matching %>% dfSummary %>% summarytools::view()
+black_no_matching %>% dfSummary %>% summarytools::view()
+```
+The data is not promising for the white participants The effect is exactly in the opposite direction as expected. It is only a small effect. Non-matching participants state that they have higher trust.
+
+For the black participants there seems to be a small effect in the direction we expected it. e.g. Matching participants state that they have higher trust.
+
+## T-Test
+### White
+#### Trust
+Testing if the trust between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$trust, white_no_matching$trust, names=c('white, matching', 'white, no matching'), ylab='trust')
+```
+```{r}
+t.test(white_matching$trust, white_no_matching$trust, alternative = 'greater') #no significant difference
+```
+#### Perceived Competence
+Testing if the competence between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$competence, white_no_matching$competence, names=c('white, matching', 'white, no matching'), ylab='competence')
+```
+```{r}
+t.test(white_matching$competence, white_no_matching$competence, alternative = 'greater') #no significant difference
+```
+#### Advisor Benevolence
+Testing if the advisor benevolence between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$benevolence, white_no_matching$benevolence, names=c('white, matching', 'white, no matching'), ylab='advisor benevolence')
+```
+```{r}
+t.test(white_matching$benevolence, white_no_matching$benevolence, alternative = 'greater') #no significant difference
+```
+
+### Investment likelihood
+Testing if the likelihood to invest between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$likelihood_invest, white_no_matching$likelihood_invest, names=c('white, matching', 'white, no matching'), ylab='investment likelihood')
+boxplot(white_matching$lic_amount, white_no_matching$lic_amount, names=c('white, matching', 'white, no matching'), ylab='investment likelihood portion')
+```
+```{r}
+t.test(white_matching$likelihood_invest, white_no_matching$likelihood_invest, alternative = 'greater') #no significant difference
+```
+
+```{r}
+boxplot(white_matching$lic_amount, white_no_matching$lic_amount, names=c('white, matching', 'white, no matching'), ylab='investment likelihood portion')
+```
+```{r}
+t.test(white_matching$lic_amount, white_no_matching$lic_amount, alternative = 'greater') #no significant difference
+```
+#### Satisfaction
+Testing if the satisfaction between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$satisfaction, white_no_matching$satisfaction, names=c('white, matching', 'white, no matching'), ylab='satisfaction')
+```
+```{r}
+t.test(white_matching$satisfaction, white_no_matching$satisfaction, alternative = 'greater') #no significant difference
+```
+
+#### Benevolence towards the firm
+Testing if the benevolence towards the firm between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$benevolence_firm, white_no_matching$benevolence_firm, names=c('white, matching', 'white, no matching'), ylab='firm benevolence')
+```
+```{r}
+t.test(white_matching$benevolence_firm, white_no_matching$benevolence_firm, alternative = 'greater') #no significant difference
+```
+
+#### Loyalty
+Testing if the loyalty between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(white_matching$loyalty, white_no_matching$loyalty, names=c('white, matching', 'white, no matching'), ylab='loyalty')
+```
+```{r}
+t.test(white_matching$loyalty, white_no_matching$loyalty, alternative = 'greater') #no significant difference
+```
+
+
+### Black
+#### Trust
+Testing if the trust between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$trust, black_no_matching$trust, names=c('black, matching', 'black, no matching'), ylab='trust')
+```
+```{r}
+boxplot(white_matching$trust, white_no_matching$trust, names=c('white, matching', 'white, no matching'), ylab='trust')
+```
+```{r}
+t.test(black_matching$trust, black_no_matching$trust, alternative = 'greater') #significant difference
+```
+Test the effect size.
+```{r}
+cohensD(black_matching$trust, black_no_matching$trust) #small effect
+```
+#### Perceived Competence
+Testing if the competence between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$competence, black_no_matching$competence, names=c('black, matching', 'black, no matching'), ylab='competence')
+```
+```{r}
+t.test(black_matching$competence, black_no_matching$competence, alternative = 'greater') #significant difference
+```
+Test the effect size.
+```{r}
+cohensD(black_matching$competence, black_no_matching$competence) #small effect
+```
+
+#### Advisor Benevolence
+Testing if the advisor benevolence between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$benevolence, black_no_matching$benevolence, names=c('black, matching', 'black, no matching'), ylab='advisor benevolence')
+```
+```{r}
+t.test(black_matching$benevolence, black_no_matching$benevolence, alternative = 'greater') #no significant difference
+```
+Test the effect size.
+```{r}
+cohensD(black_matching$benevolence, black_no_matching$benevolence) #small-medium effect
+```
+
+### Investment likelihood
+Testing if the likelihood to invest between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$likelihood_invest, black_no_matching$likelihood_invest, names=c('black, matching', 'black, no matching'), ylab='investment likelihood')
+```
+```{r}
+t.test(black_matching$likelihood_invest, black_no_matching$likelihood_invest, alternative = 'greater') #not significant
+```
+
+```{r}
+boxplot(black_matching$lic_amount, black_no_matching$lic_amount, names=c('black, matching', 'black, no matching'), ylab='investment likelihood portion')
+```
+```{r}
+t.test(black_matching$lic_amount, black_no_matching$lic_amount, alternative = 'greater') #no significant difference
+```
+#### Satisfaction
+Testing if the satisfaction between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$satisfaction, black_no_matching$satisfaction, names=c('black, matching', 'black, no matching'), ylab='satisfaction')
+```
+```{r}
+t.test(black_matching$satisfaction, black_no_matching$satisfaction, alternative = 'greater') #no significant difference
+```
+
+#### Benevolence towards the firm
+Testing if the benevolence towards the firm between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$benevolence_firm, black_no_matching$benevolence_firm, names=c('black, matching', 'black, no matching'), ylab='firm benevolence')
+```
+```{r}
+t.test(black_matching$benevolence_firm, black_no_matching$benevolence_firm, alternative = 'greater') #significant difference
+```
+Test the effect size.
+```{r}
+cohensD(black_matching$benevolence_firm, black_no_matching$benevolence_firm) #small effect
+```
+
+#### Loyalty
+Testing if the loyalty between the conditions matching vs. non-matching deviates.
+```{r}
+boxplot(black_matching$loyalty, black_no_matching$loyalty, names=c('black, matching', 'black, no matching'), ylab='loyalty')
+```
+```{r}
+t.test(black_matching$loyalty, black_no_matching$loyalty, alternative = 'greater') #significant difference
+```
+
+Test the effect size.
+```{r}
+cohensD(black_matching$loyalty, black_no_matching$loyalty) #small effect
+```
+
+## ANOVA
+Data preparation for further usage.
+```{r}
+white_matching_labelled = white_matching %>% mutate(cond='white, matching')
+white_no_matching_labelled = white_no_matching %>% mutate(cond='white, no-matching')
+white_labelled = white_matching_labelled %>% bind_rows(white_no_matching_labelled)
+
+black_matching_labelled = black_matching %>% mutate(cond='black, matching')
+black_no_matching_labelled = black_no_matching %>% mutate(cond='black, no-matching')
+black_labelled = black_matching_labelled %>% bind_rows(black_no_matching_labelled)
+
+data_labelled = white_labelled %>% bind_rows(black_labelled)
+colnames(data_labelled)
+```
+
+First check the covariance between the varialbes and show them as a graph.
+```{r}
+
+
+mixed_assoc = function(df, cor_method="spearman", adjust_cramersv_bias=TRUE){
+    df_comb = expand.grid(names(df), names(df),  stringsAsFactors = F) %>% set_names("X1", "X2")
+
+    is_nominal = function(x) class(x) %in% c("factor", "character")
+    # https://community.rstudio.com/t/why-is-purr-is-numeric-deprecated/3559
+    # https://github.com/r-lib/rlang/issues/781
+    is_numeric <- function(x) { is.integer(x) || is_double(x)}
+
+    f = function(xName,yName) {
+        x =  pull(df, xName)
+        y =  pull(df, yName)
+
+        result = if(is_nominal(x) && is_nominal(y)){
+            # use bias corrected cramersV as described in https://rdrr.io/cran/rcompanion/man/cramerV.html
+            cv = cramerV(as.character(x), as.character(y), bias.correct = adjust_cramersv_bias)
+            data.frame(xName, yName, assoc=cv, type="cramersV")
+
+        }else if(is_numeric(x) && is_numeric(y)){
+            correlation = cor(x, y, method=cor_method, use="complete.obs")
+            data.frame(xName, yName, assoc=correlation, type="correlation")
+
+        }else if(is_numeric(x) && is_nominal(y)){
+            # from https://stats.stackexchange.com/questions/119835/correlation-between-a-nominal-iv-and-a-continuous-dv-variable/124618#124618
+            r_squared = summary(lm(x ~ y))$r.squared
+            data.frame(xName, yName, assoc=sqrt(r_squared), type="anova")
+
+        }else if(is_nominal(x) && is_numeric(y)){
+            r_squared = summary(lm(y ~x))$r.squared
+            data.frame(xName, yName, assoc=sqrt(r_squared), type="anova")
+
+        }else {
+            warning(paste("unmatched column type combination: ", class(x), class(y)))
+        }
+
+        # finally add complete obs number and ratio to table
+        result %>% mutate(complete_obs_pairs=sum(!is.na(x) & !is.na(y)), complete_obs_ratio=complete_obs_pairs/length(x)) %>% rename(x=xName, y=yName)
+    }
+
+    # apply function to each variable combination
+    map2_df(df_comb$X1, df_comb$X2, f)
+}
+
+mixed_assoc(covarianceTable)
+
+covarianceTable %>% 
+  mixed_assoc() %>%
+  select(x, y, assoc) %>%
+  spread(y, assoc) %>%
+  column_to_rownames("x") %>%
+  as.matrix %>%
+  as_cordf %>%
+  network_plot() #somehow doesn't seem to be completely correct (no negative)
+
+
+model.matrix(~0+., data=covarianceTable) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=2)
+```
+
+
+
+
+First calculate an aov (underlying lm).
+```{r}
+model_trust = aov(data_labelled$trust~data_labelled$cond)
+summary(model_trust)
+```
+Find out between which variables the difference is.
+```{r}
+TukeyHSD(model_trust, ordered=TRUE)
+```
+```{r}
+model = lm(data_labelled$trust~as_factor(data_labelled$cond) + data_labelled$dem_gender + data_labelled$dem_education + data_labelled$ob_age)
+summary(model)
+```
+```{r}
+vif(model)
+```
+
+
+
+
+

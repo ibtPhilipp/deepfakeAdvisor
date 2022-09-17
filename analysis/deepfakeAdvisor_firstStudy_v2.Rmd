@@ -1,0 +1,1291 @@
+---
+title: "DeepfakeAdvisor: First Study"
+date: 2022-09-13
+author: Philipp Winder
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+This notebook is used to analyze the first study of the DeepfakeAdvisor project.
+
+# Data Preparation
+
+## Loading the Libraries
+All required libraries are loaded.
+```{r}
+library(tidyverse)
+library(rcompanion)
+library(ggcorrplot)
+library(corrr)
+library(psych)
+library(summarytools)
+library(lsr)
+library(car)
+options(dplyr.width = Inf) # show all columns when printing to console
+theme_set(theme_minimal()) # set ggplot theme for cleaner plotting
+```
+
+## Getting the Data
+Started by loading the raw survey data from the csv files. There was a separate but identical study of black/ African-American and white/ Caucasian participants each.
+```{r}
+setwd('/home/philipp/MEGA/PhD/Projects/DeepFakeAdvisor/analysis/')
+
+white_complete = as_tibble(read.csv('../data/first_study/white/deepfakeAdvisor_white_complete.csv', sep=';', header=T))
+black_complete = as_tibble(read.csv('../data/first_study/black/deepfakeAdvisor_black_complete.csv', sep=';', header=T))
+```
+
+Remove participants who did not watch the stimulus video.
+```{r}
+white_clean = white_complete %>% filter(stimulus_played1 == 1 | stimulus_played2 == 1 | stimulus_played3 == 1 | stimulus_played4 == 1 | stimulus_played5 == 1 | stimulus_played6 == 1 | stimulus_played1 == 0 | stimulus_played2 == 0 | stimulus_played3 == 0 | stimulus_played4 == 0 | stimulus_played5 == 0 | stimulus_played6 == 0)
+
+black_clean = black_complete %>% filter(stimulus_played1 == 1 | stimulus_played2 == 1 | stimulus_played3 == 1 | stimulus_played4 == 1 | stimulus_played5 == 1 | stimulus_played6 == 1 | stimulus_played1 == 0 | stimulus_played2 == 0 | stimulus_played3 == 0 | stimulus_played4 == 0 | stimulus_played5 == 0 | stimulus_played6 == 0)
+```
+
+Remove records where the participant needed less than 30 seconds to submit the survey.
+```{r}
+white_exclude = white_clean %>% filter(duration < 30)
+white_exclude #according to Prolific this participant timed-out. The data record looks good and complete and the participant will thus be kept.
+
+black_exclude = black_clean %>% filter(duration < 30)
+black_exclude
+```
+
+## Splitting of Data
+Splitting the data sets into the corresponding conditions (2*2 design; participant race: black vs white; racial-matching advisor and participant: yes vs no).
+```{r}
+white_matching = white_clean %>% filter(c_0002 == 1 | c_0002 == 2)
+white_no_matching = white_clean %>% filter(c_0002 == 3 | c_0002 == 4)
+
+black_matching = black_clean %>% filter(c_0002 == 1 | c_0002 == 2)
+black_no_matching = black_clean %>% filter(c_0002 == 3 | c_0002 == 4)
+```
+
+## Labelling and Merging of the Data
+Data preparation for further usage.
+```{r}
+white_matching_labelled = white_matching %>% mutate(cond_race='white') %>% mutate(cond_matching='matching') %>% mutate(cond="white, matching")
+white_no_matching_labelled = white_no_matching %>% mutate(cond_race='white') %>% mutate(cond_matching="not_matching") %>% mutate(cond="white, not_matching")
+white_labelled = white_matching_labelled %>% bind_rows(white_no_matching_labelled)
+
+black_matching_labelled = black_matching %>% mutate(cond_race='black') %>% mutate(cond_matching='matching') %>% mutate(cond="black, matching")
+black_no_matching_labelled = black_no_matching %>% mutate(cond_race='black') %>% mutate(cond_matching="not_matching") %>% mutate(cond="black, not_matching")
+black_labelled = black_matching_labelled %>% bind_rows(black_no_matching_labelled)
+
+df = white_labelled %>% bind_rows(black_labelled)
+colnames(df)
+```
+## Cleaning of the Whole Data Set
+Remove columns which will not be used.
+```{r}
+cols_unused = c('lfdn', 'external_lfdn', 'tester', 'dispcode', 'lastpage', 'quality', 's_0001', 'browser', 'referer', 'device_type', 'quota', 'quota_assignment', 'quota_rejected_id', 'page_history', 'hflip', 'vflip', 'output_mode', 'javascript', 'flash', 'session_id', 'language', 'cleaned', 'ats', 'datetime', 'date_of_last_access', 'date_of_first_mail')
+
+df = df %>% select(-all_of(cols_unused)) %>% select(-starts_with('rts')) %>% select(-starts_with('stimulus_played'))
+df = df %>% mutate(person_trusting=person_trsuting) %>% select(-person_trsuting)
+
+write_csv(df, './deepfakeAdvisor_firstStudy_full.csv')
+```
+
+# Analysis
+Get an overview of the collected data.
+```{r}
+#df %>% dfSummary %>% summarytools::view()
+#df %>% filter(cond_race == 'white') %>% dfSummary %>% summarytools::view()
+#df %>% filter(cond_race == 'black') %>% dfSummary %>% summarytools::view()
+```
+
+## Demographics & Similarity
+### Demographics by Condition
+
+
+### Perceived Similiarity by Condition
+```{r}
+df %>% 
+  pivot_longer(c(sim_general, sim_ethnicity, sim_age, sim_gender, sim_language), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(sim_general, sim_ethnicity, sim_age, sim_gender, sim_language), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+## Dependent Variables
+### Trust by Condition
+```{r}
+df %>% 
+  pivot_longer(c(trust_care, trust_contact, trust_general, trust_relationship, trust_understand, trust_warmth), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(trust_care, trust_contact, trust_general, trust_relationship, trust_understand, trust_warmth), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the general trust scale.
+```{r}
+df %>% select(trust_general, trust_contact, trust_relationship) %>% alpha(check.keys=TRUE) # seems good
+```
+Check the affective trust scale.
+```{r}
+df %>% select(trust_care, trust_understand, trust_warmth) %>% alpha(check.keys=TRUE) # seems very good (maybe already too good - redundancies?)
+```
+Build the average for the scales.
+```{r}
+df = df %>% mutate(trust=rowMeans(select(., c(trust_general, trust_contact, trust_relationship))))%>% mutate(affective_trust=rowMeans(select(., c(trust_care, trust_understand, trust_warmth))))
+```
+
+### Perceived Competence by Condition
+```{r}
+df %>% 
+  pivot_longer(c(competence_capable, competence_general, competence_intelligent, competence_skillful), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(competence_capable, competence_general, competence_intelligent, competence_skillful), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the competence scale.
+```{r}
+df %>% select(competence_capable, competence_general, competence_intelligent, competence_skillful) %>% alpha(check.keys=TRUE) # seems too good (redundancies?)
+```
+Build the average for the scale
+```{r}
+df = df %>% mutate(competence=rowMeans(select(., c(competence_capable, competence_general, competence_intelligent, competence_skillful))))
+```
+
+### Advisor Benevolence by Condition
+```{r}
+df %>% 
+  pivot_longer(c(bene_values, bene_honest, bene_respect), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(bene_values, bene_honest, bene_respect), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the benevolence scale.
+```{r}
+df %>% select(bene_values, bene_honest, bene_respect) %>% alpha(check.keys=TRUE) # seems good
+```
+Build the average for the scale
+```{r}
+df = df %>% mutate(benevolence=rowMeans(select(., c(bene_values, bene_honest, bene_respect))))
+```
+
+### Likelihood to invest
+```{r}
+df %>% 
+  pivot_longer(c(li_better, li_implement, li_improvements), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(li_better, li_implement, li_improvements), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 100 scale)")
+```
+Check the likelihood to invest scale.
+```{r}
+df %>% select(li_better, li_implement, li_improvements) %>% alpha(check.keys=TRUE) # seems too good
+```
+Have a look at the likelihood to invest in context question.
+```{r}
+df %>% 
+  pivot_longer(c(lic_amount), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 100 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(lic_amount), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Normalize the value and add it to the other likelihood to invest scale.
+```{r}
+df = df %>% mutate(lic_amount=lic_amount/100*7)
+df %>% select(li_better, li_implement, li_improvements, lic_amount) %>% alpha(check.keys=TRUE) # this already looks better and like a more valid scale
+```
+
+Build the average for the scale
+```{r}
+df = df %>% mutate(li=rowMeans(select(., c(li_better, li_implement, li_improvements, lic_amount))))
+```
+
+### Satisfaction by Condition
+```{r}
+df %>% 
+  pivot_longer(c(sat_happy, sat_right, sat_satisfied), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(sat_happy, sat_right, sat_satisfied), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the satisfaction scale.
+```{r}
+df %>% select(sat_happy, sat_right, sat_satisfied) %>% alpha(check.keys=TRUE) # seems too good (redundancies?)
+```
+Build the average for the scale
+```{r}
+df = df %>% mutate(satisfaction=rowMeans(select(., c(sat_happy, sat_right, sat_satisfied))))
+```
+
+### Firm Benevolence by Condition
+```{r}
+df %>% 
+  pivot_longer(c(benef_hurt, benef_help, benef_needs, benef_important, benef_welfare), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(benef_hurt, benef_help, benef_needs, benef_important, benef_welfare), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the firm benevolence scale.
+```{r}
+df %>% select(benef_hurt, benef_help, benef_needs, benef_important, benef_welfare) %>% alpha(check.keys=TRUE) # seems too good (redundancies?)
+```
+Build the average for the scale
+```{r}
+df = df %>% mutate(benevolence_firm=rowMeans(select(., c(benef_hurt, benef_help, benef_needs, benef_important, benef_welfare))))
+```
+
+### Loyalty by Condition
+```{r}
+df %>% 
+  pivot_longer(c(loy_choose, loy_best, loy_loyal), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(loy_choose, loy_best, loy_loyal), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the loyalty scale.
+```{r}
+df %>% select(loy_choose, loy_best, loy_loyal) %>% alpha(check.keys=TRUE) # seems too good (redundancies?)
+```
+Check how much they would spend on the firm's products
+```{r}
+df %>% 
+  pivot_longer(c(lif_portion), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 100 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(lif_portion), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 100 scale)")
+```
+Normalize and add to existing scale.
+```{r}
+df = df %>% mutate(lif_portion=lif_portion/100*7)
+df %>% select(li_better, li_implement, li_improvements, lic_amount) %>% alpha(check.keys=TRUE) # this already looks better and like a more valid scale
+```
+Check if the recommendation probability should be added as well to the scale.
+```{r}
+df %>% 
+  pivot_longer(c(recomm_propensity), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 100 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(recomm_propensity), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 100 scale)")
+```
+Normalize and add to existing scale.
+```{r}
+df = df %>% mutate(recomm_propensity=recomm_propensity/100*7)
+df %>% select(li_better, li_implement, li_improvements, lic_amount, recomm_propensity) %>% alpha(check.keys=TRUE) # this looks good
+```
+Build the average for the scale
+```{r}
+df = df %>% mutate(loyalty=rowMeans(select(., c(li_better, li_implement, li_improvements, lic_amount, recomm_propensity))))
+```
+
+### Motivation to Learn by Condition
+```{r}
+df %>% 
+  pivot_longer(c(learn_learn, learn_improve, learn_skills), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(learn_learn, learn_improve, learn_skills), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the motivation to learn scale.
+```{r}
+df %>% select(learn_learn, learn_improve, learn_skills) %>% alpha(check.keys=TRUE) # seems good
+```
+Build the average for the scale
+```{r}
+df = df %>% mutate(learn=rowMeans(select(., c(learn_learn, learn_improve, learn_skills))))
+```
+
+## Moderators and Mediators
+### Attitude Towards Advisor by Condition
+```{r}
+df %>% 
+  pivot_longer(c(att_bestInterest, att_commissions, att_ownInterest, att_trustworthy), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(att_bestInterest, att_commissions, att_ownInterest, att_trustworthy), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the firm benevolence scale.
+```{r}
+df %>% select(att_bestInterest, att_commissions, att_ownInterest, att_trustworthy) %>% alpha(check.keys=TRUE) # seems good and the reverse coded elements have been correctly noticed
+```
+Reverse code the *att_commissions* and *att_ownInterest* element.
+```{r}
+reverse_points = function(val){
+  if(val == 1){
+    return(7)
+  }else if(val == 2 ){
+    return(6)
+  }else if(val == 3){
+    return(5)
+  }else if(val == 5){
+    return(3)
+  }else if(val == 6){
+    return(2)
+  }else if(val == 7){
+    return(1)
+  }else{
+    return(4)
+  }
+}
+
+df = df %>% rowwise() %>% mutate(across(c(att_commissions, att_ownInterest), reverse_points)) %>% ungroup()
+```
+Now check the Cronbach's alpha.
+```{r}
+df %>% select(att_bestInterest, att_commissions, att_ownInterest, att_trustworthy) %>% alpha(check.keys=TRUE) # seems good
+```
+
+Build the average for the scale
+```{r}
+df = df %>% mutate(attitude=rowMeans(select(., c(att_bestInterest, att_commissions, att_ownInterest, att_trustworthy))))
+```
+
+### Financial Well-Being by Condition
+```{r}
+df %>% 
+  pivot_longer(c(fwb_behind, fwb_left, fwb_situation), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(fwb_behind, fwb_left, fwb_situation), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the financial well-being scale.
+```{r}
+df %>% select(fwb_behind, fwb_left, fwb_situation) %>% alpha(check.keys=TRUE) # seems good and since the reverse coded elements are more than the normal ones the opposite was noticed as reverse-coded
+```
+Reverse code the *fwb_behind* and *fwb_situation* element.
+```{r}
+df = df %>% rowwise() %>% mutate(across(c(fwb_behind, fwb_situation), reverse_points)) %>% ungroup()
+```
+Now check the Cronbach's alpha.
+```{r}
+df %>% select(fwb_behind, fwb_left, fwb_situation) %>% alpha(check.keys=TRUE) # seems good
+```
+
+Build the average for the scale
+```{r}
+df = df %>% mutate(fwb=rowMeans(select(., c(fwb_behind, fwb_left, fwb_situation))))
+```
+
+### Personality by Condition
+```{r fig.height=7, fig.width=15}
+df %>% 
+  pivot_longer(c(person_reserved, person_trusting, person_lazy, person_stress, person_artistic, person_sociable, person_fault, person_through, person_nervous, person_imagination), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r fig.height=7, fig.width=15}
+df %>% 
+  pivot_longer(c(person_reserved, person_trusting, person_lazy, person_stress, person_artistic, person_sociable, person_fault, person_through, person_nervous, person_imagination), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Check the personality scale.
+```{r}
+df %>% select(person_reserved, person_trusting, person_lazy, person_stress, person_artistic, person_sociable, person_fault, person_through, person_nervous, person_imagination) %>% alpha(check.keys=TRUE) # seems good but wrong elements were detected as reverse-coded which is not too bad since this scale detects several character traits. 
+```
+Reverse code the *person_reserved*, *person_lazy*, *person_stress*, *person_artistic* and *person_fault*  element.
+```{r}
+df = df %>% rowwise() %>% mutate(across(c(person_reserved, person_lazy, person_stress, person_artistic, person_fault), reverse_points)) %>% ungroup()
+```
+Now check the Cronbach's alpha.
+```{r}
+df %>% select(person_reserved, person_trusting, person_lazy, person_stress, person_artistic, person_sociable, person_fault, person_through, person_nervous, person_imagination) %>% alpha(check.keys=TRUE)
+```
+
+Since the reverse coding is still not correct and we want to investigate the individual character traits anyways the Cronbach's alpha is calculated for each of these traits. Starting with **Extraversion**:
+```{r}
+df %>% select(person_reserved, person_sociable) %>% alpha(check.keys=TRUE) # okay but questionable
+```
+**Agreeableness**:
+```{r}
+df %>% select(person_trusting, person_fault) %>% alpha(check.keys=TRUE) # too low
+```
+**Conscientiousness**:
+```{r}
+df %>% select(person_lazy, person_through) %>% alpha(check.keys=TRUE) # too low
+```
+**Neuroticism:**:
+```{r}
+df %>% select(person_stress, person_nervous) %>% alpha(check.keys=TRUE) # looks good
+```
+**Openness**:
+```{r}
+df %>% select(person_artistic, person_imagination) %>% alpha(check.keys=TRUE) # too low
+```
+
+Build the average for the characteristics
+```{r}
+df = df %>% mutate(openness=rowMeans(select(., c(person_artistic, person_imagination)))) %>% mutate(extraversion=rowMeans(select(., c(person_reserved, person_sociable)))) %>% mutate(neuroticism=rowMeans(select(., c(person_stress, person_nervous)))) %>% mutate(conscientiousness=rowMeans(select(., c(person_lazy, person_through)))) %>% mutate(agreeableness=rowMeans(select(., c(person_trusting, person_fault))))
+```
+
+### Patience by Condition
+Since the patience is not self-reported but assessed through a small game, it is necessary to first calculate the correct patience values.
+```{r}
+calc_patience = function(df){
+  
+  if(df$patience215 == 1){
+    return(1)
+  }else if(df$patience215 == 2){
+    return(2)
+  }else if(df$patience206 == 1){
+    return(3)
+  }else if(df$patience206 == 2){
+    return(4)
+  }else if(df$patience197 == 1){
+    return(5)
+  }else if(df$patience197 == 2){
+    return(6)
+  }else if(df$patience189 == 1){
+    return(7)
+  }else if(df$patience189 == 2){
+    return(8)
+  }else if(df$patience181 == 1){
+    return(9)
+  }else if(df$patience181 == 2){
+    return(10)
+  }else if(df$patience173 == 1){
+    return(11)
+  }else if(df$patience173 == 2){
+    return(12)
+  }else if(df$patience165 == 1){
+    return(13)
+  }else if(df$patience165 == 2){
+    return(14)
+  }else if(df$patience158 == 1){
+    return(15)
+  }else if(df$patience158 == 2){
+    return(16)
+  }else if(df$patience150 == 1){
+    return(17)
+  }else if(df$patience150 == 2){
+    return(18)
+  }else if(df$patience143 == 1){
+    return(19)
+  }else if(df$patience143 == 2){
+    return(20)
+  }else if(df$patience136 == 1){
+    return(21)
+  }else if(df$patience136 == 2){
+    return(22)
+  }else if(df$patience129 == 1){
+    return(23)
+  }else if(df$patience129 == 2){
+    return(24)
+  }else if(df$patience122 == 1){
+    return(25)
+  }else if(df$patience122 == 2){
+    return(26)
+  }else if(df$patience116 == 1){
+    return(27)
+  }else if(df$patience116 == 2){
+    return(28)
+  }else if(df$patience109 == 1){
+    return(29)
+  }else if(df$patience109 == 2){
+    return(30)
+  }else if(df$patience103 == 1){
+    return(31)
+  }else if(df$patience103 == 2){
+    return(32)
+  }
+}
+
+df = df %>% rowwise() %>% mutate(patience=calc_patience(cur_data())) %>% select(-starts_with(c('patience1', 'patience2')))
+```
+Now show the graphs.
+```{r}
+df %>% 
+  pivot_longer(c(patience), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 32 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(patience), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 32 scale)")
+```
+Check if it makes sense to add the self-reported question to the scale.
+```{r}
+df %>% 
+  pivot_longer(c(patience_general), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% 
+  pivot_longer(c(patience_general), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+The results deviate a lot from the patience game.
+Normalize and add to existing scale.
+```{r}
+df = df %>% mutate(patience_general=patience_general/7*32)
+df %>% select(patience, patience_general) %>% alpha(check.keys=TRUE) # this looks not good -> to low -> should not be added to a scale
+```
+
+
+
+### Financial Literacy by Condition
+```{r fig.height=7, fig.width=12}
+df %>% 
+  pivot_longer(starts_with('literacy'), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r fig.height=5, fig.width=12}
+df %>% 
+  pivot_longer(starts_with('literacy'), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+Analogous to the patience scale the financial literacy scale first needs to be calculated.
+```{r}
+df = df %>% mutate(across(c(literacy2, literacy6, literacy7), ~ ifelse(.x == 1, 1, 0))) %>% mutate(across(c(literacy1, literacy3, literacy4), ~ ifelse(.x == 3, 1, 0))) %>% mutate(literacy5 = ifelse(literacy5 == 2, 1, 0))
+```
+Check how many correct and wrong answers we got per condition.
+```{r fig.height=7, fig.width=12}
+df %>% 
+  pivot_longer(starts_with('literacy'), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+```{r}
+df %>% select(starts_with('literacy')) %>% alpha() #too low - with the checking of reverse-coding element 6 would be expected to be reverse-coded which is not the case. This item seems to be difficult for most to answer.
+```
+Calculate the financial literacy by summing the correct elements.
+```{r}
+df = df %>% mutate(literacy=rowSums(across(starts_with('literacy'))))
+```
+
+## Checks
+### Received Portfolio by Condition
+```{r}
+df %>% 
+  pivot_longer(check_portfolioType, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+
+Calcualte the proposed portfolio type.
+```{r}
+df = df %>% mutate(portfolio_type=ifelse(c_0001 <= 0.3333, 1, ifelse(c_0001 > 0.6666, 3, 2)))
+```
+
+Calculate if the portfolio type check is correct.
+```{r}
+df = df %>% mutate(pc_passed=ifelse(check_portfolioType == portfolio_type, TRUE, FALSE))
+```
+
+Show how many participants passed the check per condition
+```{r}
+df %>% 
+  pivot_longer(c(pc_passed), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Passed", y = "Number of respondents")
+```
+
+### Received Advice From by Condition
+```{r}
+df %>% 
+  mutate(check_advisorType=ifelse(check_advisorType==1, 'human', ifelse(check_advisorType==2, 'computer-generated avatar', 'dont know'))) %>% 
+  pivot_longer(check_advisorType, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+
+Calculate who saw the bot hint.
+```{r}
+df = df %>% mutate(saw_hint=ifelse(c_0002 == 2 | c_0002 == 4, 2, 1))
+```
+
+Calculate if the advisor type check is correct.
+```{r}
+df = df %>% mutate(ac_passed=ifelse(saw_hint == check_advisorType, TRUE, FALSE))
+```
+Show if the check was correct by condition.
+```{r}
+df %>% 
+  pivot_longer(ac_passed, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(cond), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+Show if the check was correct by condition.
+```{r}
+df %>%
+  mutate(saw_hint=ifelse(saw_hint==1, "No hint", "AI hint")) %>% 
+  pivot_longer(ac_passed, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_bar() +
+  facet_grid(vars(saw_hint), vars(question)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(x = "Response (on a 1 to 7 scale)", y = "Number of respondents")
+```
+
+## Calculated Scales Graphs
+### Advisor Perception
+#### By Race
+```{r fig.height=2, fig.width=15}
+df %>% 
+  pivot_longer(c(trust, affective_trust, competence, benevolence), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_race), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+#### By Matching
+```{r fig.height=2, fig.width=15}
+df %>% 
+  pivot_longer(c(trust, affective_trust, competence, benevolence), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_matching), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+#### By Cond
+```{r fig.height=4, fig.width=15}
+df %>% 
+  pivot_longer(c(trust, affective_trust, competence, benevolence), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+
+### Firm Related Outcomes
+#### By Race
+```{r fig.height=2, fig.width=15}
+df %>% 
+  pivot_longer(c(li, satisfaction, benevolence_firm, loyalty), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_race), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+#### By Matching
+```{r fig.height=2, fig.width=15}
+df %>% 
+  pivot_longer(c(li, satisfaction, benevolence_firm, loyalty), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_matching), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+#### By Cond
+```{r fig.height=4, fig.width=15}
+df %>% 
+  pivot_longer(c(li, satisfaction, benevolence_firm, loyalty), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+### Consumer Related Outcomes
+#### By Race
+```{r fig.height=2, fig.width=5}
+df %>% 
+  pivot_longer(learn, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_race), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+#### By Matching
+```{r fig.height=2, fig.width=5}
+df %>% 
+  pivot_longer(learn, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_matching), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+#### By Cond
+```{r fig.height=4, fig.width=5}
+df %>% 
+  pivot_longer(learn, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+### Moderators & Mediators
+#### By Race
+```{r fig.height=2, fig.width=15}
+df %>% 
+  pivot_longer(c(attitude, fwb, openness, extraversion, neuroticism, conscientiousness, agreeableness), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_race), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+
+```{r fig.height=2, fig.width=5}
+df %>% 
+  pivot_longer(patience, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_race), vars(question)) +
+  labs(x = "Response (on a 1 to 30 scale)")
+```
+It is super interesting that the patience seems to be deviating between the races.
+```{r}
+df %>% group_by(cond_race) %>% summarise(mean_patience = mean(patience), n = n())
+```
+
+#### By Matching
+```{r fig.height=2, fig.width=15}
+df %>% 
+  pivot_longer(c(attitude, fwb, openness, extraversion, neuroticism, conscientiousness, agreeableness), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_matching), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+
+```{r fig.height=2, fig.width=5}
+df %>% 
+  pivot_longer(patience, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond_matching), vars(question)) +
+  labs(x = "Response (on a 1 to 30 scale)")
+```
+
+#### By Cond
+```{r fig.height=4, fig.width=15}
+df %>% 
+  pivot_longer(c(attitude, fwb, openness, extraversion, neuroticism, conscientiousness, agreeableness), names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 7 scale)")
+```
+
+```{r fig.height=4, fig.width=5}
+df %>% 
+  pivot_longer(patience, names_to = "question", values_to = "response") %>%
+  ggplot(aes(x = response)) +
+  geom_boxplot() +
+  facet_grid(vars(cond), vars(question)) +
+  labs(x = "Response (on a 1 to 30 scale)")
+```
+
+## Correlation Tables
+### For all input variables
+```{r fig.height=20, fig.width=20}
+covarianceTable = df %>% select(c(ob_reason,ob_age,ob_realEstate,ob_debt,ob_invest,ob_saving,ob_feelingRisk,ob_investPriority,ob_scenario,sim_ethnicity,sim_general,sim_gender,sim_age,sim_language,trust_general,trust_contact,trust_relationship,trust_care,trust_understand,trust_warmth,competence_general,competence_capable,competence_skillful,competence_intelligent,bene_values,bene_honest,bene_respect,li_implement,li_improvements,li_better,lic_amount,sat_happy,sat_right,sat_satisfied,benef_hurt,benef_needs,benef_help,benef_important,benef_welfare,recomm_propensity,loy_choose,loy_best,loy_loyal,lif_portion,learn_learn,learn_improve,learn_skills,att_bestInterest,att_trustworthy,att_ownInterest,att_commissions,fwb_situation,fwb_left,fwb_behind,person_reserved,person_lazy,person_stress,person_artistic,person_sociable,person_fault,person_through,person_nervous,person_imagination,patience_general,person_trusting,literacy1,literacy2,literacy3,literacy4,literacy5,literacy6,literacy7,check_portfolioType,check_advisorType,dem_gender,dem_ethnicity,dem_usResidence,dem_financialAdvisorUsage,dem_education,income,cond_race,cond_matching))
+
+model.matrix(~0+., data=covarianceTable) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=2)
+```
+### For all calculated scales
+```{r fig.height=20, fig.width=20}
+covarianceTable = df %>% select(c(ob_reason,ob_age,ob_realEstate,ob_debt,ob_invest,ob_saving,ob_feelingRisk,ob_investPriority,ob_scenario,sim_ethnicity,sim_general,sim_gender,sim_age,sim_language,trust,affective_trust,competence,benevolence,li,satisfaction,benevolence_firm,loyalty,learn,attitude,fwb,openness,extraversion,neuroticism,conscientiousness,agreeableness,patience,literacy,portfolio_type,saw_hint,check_portfolioType,check_advisorType,dem_gender,dem_ethnicity,dem_usResidence,dem_financialAdvisorUsage,dem_education,income,cond_race,cond_matching,))
+
+model.matrix(~0+., data=covarianceTable) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=2)
+```
+
+## ANOVA
+### For Trust
+```{r}
+model = aov(trust ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+
+Check for the interaction effect.
+```{r}
+model = aov(trust ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+```{r}
+TukeyHSD(model)
+```
+Plot means side by side.
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(trust), se= sd(trust)/sqrt(n())) %>% 
+  ggplot(aes(x=reorder(cond_matching, -mean), y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('trust') + xlab('cond_matching')
+```
+
+
+
+### For Competence
+```{r}
+model = aov(competence ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+
+Check for the interaction effect.
+```{r}
+model = aov(competence ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+```{r}
+TukeyHSD(model)
+```
+Plot means side by side.
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(competence), se= sd(competence)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('competence') + xlab('cond_matching')
+```
+
+### For Advisor Benevolence
+```{r}
+model = aov(benevolence ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+Check for the interaction effect.
+```{r}
+model = aov(benevolence ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+
+```{r}
+TukeyHSD(model)
+```
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(benevolence), se= sd(benevolence)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('benevolence') + xlab('cond_matching')
+```
+
+### For Investment Likelihood
+```{r}
+model = aov(li ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+Check for the interaction effect.
+```{r}
+model = aov(li ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+
+```{r}
+TukeyHSD(model)
+```
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(li), se= sd(li)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('investment likelihood') + xlab('cond_matching')
+```
+
+### For Satisfaction
+```{r}
+model = aov(satisfaction ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+Check for the interaction effect.
+```{r}
+model = aov(satisfaction ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+
+```{r}
+TukeyHSD(model)
+```
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(satisfaction), se= sd(satisfaction)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('satisfaction') + xlab('cond_matching')
+```
+
+### For Firm Benevolence
+```{r}
+model = aov(benevolence_firm ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+Check for the interaction effect.
+```{r}
+model = aov(benevolence_firm ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+
+```{r}
+TukeyHSD(model)
+```
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(benevolence_firm), se= sd(benevolence_firm)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('firm benevolence') + xlab('cond_matching')
+```
+### For Loyalty
+```{r}
+model = aov(loyalty ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+Check for the interaction effect.
+```{r}
+model = aov(loyalty ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+
+```{r}
+TukeyHSD(model)
+```
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(loyalty), se= sd(loyalty)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('loyalty') + xlab('cond_matching')
+```
+### For Motivation to Learn
+```{r}
+model = aov(learn ~ cond_matching + cond_race, data=df)
+summary(model)
+```
+Check for the interaction effect.
+```{r}
+model = aov(learn ~ cond_matching * cond_race, data=df)
+summary(model)
+```
+
+```{r}
+TukeyHSD(model)
+```
+```{r}
+df %>% group_by(cond_race, cond_matching) %>% summarise(mean=mean(learn), se= sd(learn)/sqrt(n())) %>% mutate(cond_matching=fct_relevel(cond_matching, 'not_matching', 'matching')) %>% 
+  ggplot(aes(x=cond_matching, y=mean, fill=cond_race, ymin=mean-se, ymax=mean+se)) +
+  geom_col(position = position_dodge()) +
+  geom_errorbar(position = position_dodge(0.9), width=.2) +
+  ylab('Motivation to Learn') + xlab('cond_matching')
+```
+## Data Splitting & t-tests
+For white people check always the reverse effect.
+### Trust
+#### White
+```{r}
+white_matching = df %>% filter(cond=='white, matching')
+white_no_matching = df %>% filter(cond=='white, not_matching')
+t.test(white_no_matching$trust, white_matching$trust, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$trust, white_no_matching$trust)
+```
+#### Black
+```{r}
+black_matching = df %>% filter(cond=='black, matching')
+black_no_matching = df %>% filter(cond=='black, not_matching')
+t.test(black_matching$trust, black_no_matching$trust, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$trust, black_no_matching$trust)
+```
+### Competence
+#### White
+```{r}
+t.test(white_no_matching$competence, white_matching$competence, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$competence, white_no_matching$competence)
+```
+#### Black
+```{r}
+t.test(black_matching$competence, black_no_matching$competence, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$competence, black_no_matching$competence)
+```
+### Benevolence
+#### White
+```{r}
+t.test(white_no_matching$benevolence, white_matching$benevolence, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$benevolence, white_no_matching$benevolence)
+```
+#### Black
+```{r}
+t.test(black_matching$benevolence, black_no_matching$benevolence, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$benevolence, black_no_matching$benevolence)
+```
+### Likelihood to Invest
+#### White
+```{r}
+t.test(white_no_matching$li, white_matching$li, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$li, white_no_matching$li)
+```
+#### Black
+```{r}
+t.test(black_matching$li, black_no_matching$li, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$li, black_no_matching$li)
+```
+
+### Satisfaction
+#### White
+```{r}
+t.test(white_no_matching$satisfaction, white_matching$satisfaction, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$satisfaction, white_no_matching$satisfaction)
+```
+#### Black
+```{r}
+t.test(black_matching$satisfaction, black_no_matching$satisfaction, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$satisfaction, black_no_matching$satisfaction)
+```
+### Firm Benevolence
+#### White
+```{r}
+t.test(white_no_matching$benevolence_firm, white_matching$benevolence_firm, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$benevolence_firm, white_no_matching$benevolence_firm)
+```
+#### Black
+```{r}
+t.test(black_matching$benevolence_firm, black_no_matching$benevolence_firm, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$benevolence_firm, black_no_matching$benevolence_firm)
+```
+
+### Loyalty
+#### White
+```{r}
+t.test(white_no_matching$loyalty, white_matching$loyalty, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$loyalty, white_no_matching$loyalty)
+```
+#### Black
+```{r}
+t.test(black_matching$loyalty, black_no_matching$loyalty, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$loyalty, black_no_matching$loyalty)
+```
+### Motivation to learn
+#### White
+```{r}
+t.test(white_no_matching$learn, white_matching$learn, alternative = "greater")
+```
+```{r}
+cohensD(white_matching$learn, white_no_matching$learn)
+```
+#### Black
+```{r}
+t.test(black_matching$learn, black_no_matching$learn, alternative = "greater")
+```
+```{r}
+cohensD(black_matching$learn, black_no_matching$learn)
+```
