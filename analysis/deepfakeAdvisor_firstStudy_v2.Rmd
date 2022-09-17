@@ -32,7 +32,7 @@ theme_set(theme_minimal()) # set ggplot theme for cleaner plotting
 ## Getting the Data
 Started by loading the raw survey data from the csv files. There was a separate but identical study of black/ African-American and white/ Caucasian participants each.
 ```{r}
-setwd('/home/philipp/MEGA/PhD/Projects/DeepFakeAdvisor/analysis/')
+setwd('/home/philipp/MEGA/PhD/Projects/deepfakeAdvisor/analysis/')
 
 white_complete = as_tibble(read.csv('../data/first_study/white/deepfakeAdvisor_white_complete.csv', sep=';', header=T))
 black_complete = as_tibble(read.csv('../data/first_study/black/deepfakeAdvisor_black_complete.csv', sep=';', header=T))
@@ -1289,3 +1289,9 @@ t.test(black_matching$learn, black_no_matching$learn, alternative = "greater")
 ```{r}
 cohensD(black_matching$learn, black_no_matching$learn)
 ```
+
+# Write to File
+```{r}
+write.csv(df, '../data/first_study/deepfakeAdvisor_firstStudy_full.csv')
+```
+
