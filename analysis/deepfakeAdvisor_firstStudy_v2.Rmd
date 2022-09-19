@@ -1295,3 +1295,26 @@ cohensD(black_matching$learn, black_no_matching$learn)
 write.csv(df, '../data/first_study/deepfakeAdvisor_firstStudy_full.csv')
 ```
 
+# Mediation
+## Attitude
+```{r}
+df %>% mutate(cond_matching=factor(cond_matching)) %>% mutate(cond_matching=as.numeric(cond_matching)) %>% process(y="trust", x="cond_matching", m="attitude", model=4, boot=200, normal=1, total=1, stand=1, seed=1337)
+```
+## Attitude & Personality
+```{r}
+df %>% mutate(cond_matching=factor(cond_matching)) %>% mutate(cond_matching=as.numeric(cond_matching)) %>% process(y="trust", x="cond_matching", m="patience", w="attitude", model=8, boot=200, normal=1, total=1, stand=1, seed=1337)
+```
+
+
+## Financial Well-Being
+```{r}
+df %>% mutate(cond_matching=factor(cond_matching)) %>% mutate(cond_matching=as.numeric(cond_matching)) %>% process(y="trust", x="cond_matching", m="fwb", model=4, boot=200, normal=1, total=1, stand=1, seed=1337)
+```
+## Personality
+```{r}
+df %>% mutate(cond_matching=factor(cond_matching)) %>% mutate(cond_matching=as.numeric(cond_matching)) %>% process(y="trust", x="cond_matching", m=c("openness", "extraversion", "neuroticism", "conscientiousness", "agreeableness"), model=4, boot=200, normal=1, total=1, stand=1, seed=1337)
+```
+## Patience
+```{r}
+df %>% mutate(cond_matching=factor(cond_matching)) %>% mutate(cond_matching=as.numeric(cond_matching)) %>% process(y="trust", x="cond_matching", m=c("patience"), model=4, boot=10000, normal=1, total=1, stand=1, seed=1337)
+```
